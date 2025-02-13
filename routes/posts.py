@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import Post, session
+from models import Post, session, Category
 from datetime import datetime
 import json
 
@@ -8,7 +8,10 @@ posts_bp = Blueprint('posts_bp', __name__)
 
 @posts_bp.route('/posts', methods=['GET'])
 def get_posts():
-    posts = session.query(Post).all()
+    category_id = request.args.get("category_id") 
+    if not category_id:
+        return jsonify({"message": "Category ID is required"}), 400
+    posts = session.query(Post).filter(Post.category_id == category_id).all()
     return jsonify([post.to_dict() for post in posts])
 
 @posts_bp.route('/posts/<int:id>', methods=['GET'])
@@ -23,6 +26,10 @@ def get_post(id):
 def create_post():
     data = request.get_json()
     current_user = json.loads(get_jwt_identity())
+
+    category_id = data.get('category_id')
+    if not session.query(Category).filter_by(id=category_id).first():
+        return jsonify({"message": "Invalid category ID"})
     new_post = Post(
         title=data['title'],
         content=data['content'],
@@ -46,6 +53,9 @@ def update_post(id):
     current_user = json.loads(get_jwt_identity()) 
     if post.user_id != current_user['id']:
         return jsonify({"message": "You can't update this posts."}), 403
+    category_id = data.get('category_id')
+    if not session.query(Category).filter_by(id=category_id).first():
+        return jsonify({"message": "Invalid category ID"}), 400    
 
     post.title = data['title']
     post.content = data['content']
@@ -53,8 +63,8 @@ def update_post(id):
     post.updated_at = datetime.utcnow()
     session.commit()
     return jsonify(post.to_dict()), 200
+
 @posts_bp.route('/posts/<int:id>', methods=['DELETE'])
-@jwt_required()
 @jwt_required()
 def delete_post(id):
     try:
